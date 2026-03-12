@@ -1,16 +1,29 @@
 # Contracts (MVP)
 
-Minimal Solidity scaffold for ASK policy control.
+## PolicyRegistry
 
-## Structure
+`src/PolicyRegistry.sol` is the on-chain source of truth for per-agent policy.
 
-- `src/PolicyRegistry.sol` — canonical policy storage + panic switch.
+### Update semantics (enforced)
 
-## Compile (example)
+- `registerPolicy`: one-time registration for `agentId`; caller must equal `policy.owner`.
+- `updatePolicy`: **full-replace** semantics for policy fields and arrays (`allowedActions`, `allowedRecipients`).
+- `updatePolicy` cannot rotate owner; use `rotateOwner` for explicit ownership transfer.
+- `policyVersion` is managed internally:
+  - starts at `1` on register
+  - increments on update / panic toggle / owner rotation
+
+### Tests
+
+Foundry tests are in `contracts/test/PolicyRegistry.t.sol` and cover:
+- owner-only mutation paths
+- register/update semantics
+- version increments
+- panic mode behavior
+
+Run (if Foundry is installed):
 
 ```bash
-# Requires solc >=0.8.24 available in PATH
-solc --bin --abi contracts/src/PolicyRegistry.sol -o contracts/out
+cd contracts
+forge test -vv
 ```
-
-> TODO: Add Foundry/Hardhat tests once core flow is stable.

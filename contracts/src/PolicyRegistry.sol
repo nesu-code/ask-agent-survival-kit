@@ -36,9 +36,13 @@ contract PolicyRegistry {
         return _policies[agentId];
     }
 
+    /// @notice Register policy for a new agent.
+    /// @dev Register/update semantics are FULL-REPLACE (except policyVersion which is managed internally).
+    ///      The caller must be the policy owner to prevent third-party grief registration.
     function registerPolicy(bytes32 agentId, AgentPolicy calldata policy) external {
         require(_policies[agentId].owner == address(0), "ASK: already registered");
         require(policy.owner != address(0), "ASK: invalid owner");
+        require(msg.sender == policy.owner, "ASK: sender must be owner");
 
         AgentPolicy storage p = _policies[agentId];
         p.owner = policy.owner;
@@ -59,11 +63,14 @@ contract PolicyRegistry {
         emit PolicyRegistered(agentId, p.owner, p.policyVersion);
     }
 
+    /// @notice Update policy for an existing agent.
+    /// @dev FULL-REPLACE semantics: all mutable fields are overwritten, and omitted arrays are cleared.
+    ///      Owner rotation is intentionally not supported here; use rotateOwner().
     function updatePolicy(bytes32 agentId, AgentPolicy calldata policy) external onlyOwner(agentId) {
         require(policy.owner != address(0), "ASK: invalid owner");
 
         AgentPolicy storage p = _policies[agentId];
-        // TODO: tighten update semantics if partial patch model is preferred.
+        require(policy.owner == p.owner, "ASK: owner change via rotateOwner");
         p.owner = policy.owner;
         p.spendLimitTotal = policy.spendLimitTotal;
         p.spentTotal = policy.spentTotal;

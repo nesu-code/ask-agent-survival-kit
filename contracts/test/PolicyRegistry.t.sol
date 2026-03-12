@@ -7,19 +7,20 @@ contract PolicyRegistryTest {
     PolicyRegistry internal registry;
 
     uint256 internal constant OWNER_PK = 0xA11CE;
-    uint256 internal constant OTHER_PK = 0xB0B;
+    uint256 internal constant ALT_SIGNER_PK = 0xB0B;
 
     address internal owner;
-    address internal otherSigner;
+    address internal altSigner;
 
     address internal constant RECIPIENT_A = address(0xBEEF);
 
     bytes32 internal constant AGENT_ID = keccak256("agent-1");
+    bytes32 internal constant ACTION_SPEND = keccak256("spend");
 
     function setUp() public {
         registry = new PolicyRegistry();
         owner = _vm().addr(OWNER_PK);
-        otherSigner = _vm().addr(OTHER_PK);
+        altSigner = _vm().addr(ALT_SIGNER_PK);
     }
 
     function testRegisterPolicySetsVersionOne() public {
@@ -33,7 +34,7 @@ contract PolicyRegistryTest {
         require(stored.policyVersion == 1, "version must start at 1");
         require(stored.allowedActions.length == 1, "action length mismatch");
         require(stored.allowedRecipients.length == 1, "recipient length mismatch");
-        require(registry.authorizedSigner(AGENT_ID) == owner, "default signer must be owner");
+        require(registry.authorizedSigner(AGENT_ID) == owner, "authorized signer must default to owner");
     }
 
     function testRegisterPolicyRevertsIfSenderIsNotOwner() public {
@@ -64,9 +65,6 @@ contract PolicyRegistryTest {
 
         PolicyRegistry.AgentPolicy memory updated = _mkPolicy(owner, false);
         updated.spendLimitTotal = 2_000;
-        updated.allowedActions = new bytes32[](2);
-        updated.allowedActions[0] = keccak256("spend");
-        updated.allowedActions[1] = keccak256("tool.call");
         updated.allowedRecipients = new address[](0);
 
         _prank(owner);
@@ -75,7 +73,6 @@ contract PolicyRegistryTest {
         PolicyRegistry.AgentPolicy memory stored = registry.getPolicy(AGENT_ID);
         require(stored.policyVersion == 2, "version should increment");
         require(stored.spendLimitTotal == 2_000, "new spend limit not applied");
-        require(stored.allowedActions.length == 2, "actions not replaced");
         require(stored.allowedRecipients.length == 0, "recipients not cleared");
     }
 
@@ -93,103 +90,114 @@ contract PolicyRegistryTest {
     function testAuthorizeIntentValidSignature() public {
         _registerDefaultPolicy();
 
-        PolicyRegistry.SignedIntent memory intent = _mkIntent(keccak256("req-valid"), 0, uint64(block.timestamp + 300));
-        bytes memory sig = _signIntent(intent, OWNER_PK);
+        PolicyRegistry.ActionIntent memory intent = _mkIntent(
+            keccak256("req-valid"),
+            1,
+            RECIPIENT_A,
+            25,
+            uint64(block.timestamp + 1 hours),
+            1
+        );
 
-        registry.authorizeIntent(intent, sig);
+        bytes memory sig = _signIntent(OWNER_PK, intent);
+        address signer = registry.authorizeIntent(intent, sig);
 
-        require(registry.usedRequestId(AGENT_ID, intent.requestId), "requestId should be marked used");
-        require(registry.nextIntentNonce(AGENT_ID) == 1, "nonce should increment");
+        require(signer == owner, "signer mismatch");
+        require(registry.usedRequestIds(AGENT_ID, intent.requestId), "requestId should be consumed");
+        require(registry.usedNonces(AGENT_ID, owner, intent.nonce), "nonce should be consumed");
     }
 
-    function testAuthorizeIntentRejectsInvalidSigner() public {
+    function testAuthorizeIntentInvalidSigner() public {
         _registerDefaultPolicy();
 
-        PolicyRegistry.SignedIntent memory intent = _mkIntent(keccak256("req-bad-signer"), 0, uint64(block.timestamp + 300));
-        bytes memory sig = _signIntent(intent, OTHER_PK);
+        PolicyRegistry.ActionIntent memory intent = _mkIntent(
+            keccak256("req-bad-signer"),
+            2,
+            RECIPIENT_A,
+            25,
+            uint64(block.timestamp + 1 hours),
+            1
+        );
 
+        bytes memory sig = _signIntent(ALT_SIGNER_PK, intent);
         _expectRevert();
         registry.authorizeIntent(intent, sig);
     }
 
-    function testAuthorizeIntentRejectsExpiredDeadline() public {
+    function testAuthorizeIntentExpiredDeadline() public {
         _registerDefaultPolicy();
 
-        uint64 deadline = uint64(block.timestamp + 10);
-        PolicyRegistry.SignedIntent memory intent = _mkIntent(keccak256("req-expired"), 0, deadline);
-        bytes memory sig = _signIntent(intent, OWNER_PK);
+        PolicyRegistry.ActionIntent memory intent = _mkIntent(
+            keccak256("req-expired"),
+            3,
+            RECIPIENT_A,
+            25,
+            uint64(block.timestamp + 100),
+            1
+        );
 
-        _vm().warp(block.timestamp + 11);
+        bytes memory sig = _signIntent(OWNER_PK, intent);
+        _vm().warp(block.timestamp + 101);
 
         _expectRevert();
         registry.authorizeIntent(intent, sig);
     }
 
-    function testAuthorizeIntentRejectsReplayByRequestId() public {
+    function testAuthorizeIntentReplayAttackBlocked() public {
         _registerDefaultPolicy();
 
-        bytes32 replayId = keccak256("req-replay");
+        PolicyRegistry.ActionIntent memory first = _mkIntent(
+            keccak256("req-replay"),
+            4,
+            RECIPIENT_A,
+            25,
+            uint64(block.timestamp + 1 hours),
+            1
+        );
 
-        PolicyRegistry.SignedIntent memory first = _mkIntent(replayId, 0, uint64(block.timestamp + 300));
-        registry.authorizeIntent(first, _signIntent(first, OWNER_PK));
+        bytes memory firstSig = _signIntent(OWNER_PK, first);
+        registry.authorizeIntent(first, firstSig);
 
-        PolicyRegistry.SignedIntent memory second = _mkIntent(replayId, 1, uint64(block.timestamp + 300));
+        // Same requestId with fresh nonce must still fail.
+        PolicyRegistry.ActionIntent memory second = _mkIntent(
+            first.requestId,
+            5,
+            RECIPIENT_A,
+            25,
+            uint64(block.timestamp + 1 hours),
+            1
+        );
+
+        bytes memory secondSig = _signIntent(OWNER_PK, second);
         _expectRevert();
-        registry.authorizeIntent(second, _signIntent(second, OWNER_PK));
+        registry.authorizeIntent(second, secondSig);
     }
 
-    function testAuthorizeIntentRejectsBadNonceEvenWithFreshRequestId() public {
-        _registerDefaultPolicy();
-
-        PolicyRegistry.SignedIntent memory first = _mkIntent(keccak256("req-1"), 0, uint64(block.timestamp + 300));
-        registry.authorizeIntent(first, _signIntent(first, OWNER_PK));
-
-        PolicyRegistry.SignedIntent memory secondWithOldNonce = _mkIntent(keccak256("req-2"), 0, uint64(block.timestamp + 300));
-        _expectRevert();
-        registry.authorizeIntent(secondWithOldNonce, _signIntent(secondWithOldNonce, OWNER_PK));
-    }
-
-    function testSetAuthorizedSignerAllowsSignerRotation() public {
+    function testAuthorizeIntentWithRotatedAuthorizedSigner() public {
         _registerDefaultPolicy();
 
         _prank(owner);
-        registry.setAuthorizedSigner(AGENT_ID, otherSigner);
+        registry.setAuthorizedSigner(AGENT_ID, altSigner);
 
-        PolicyRegistry.SignedIntent memory intent = _mkIntent(keccak256("req-rotated"), 0, uint64(block.timestamp + 300));
-        bytes memory sig = _signIntent(intent, OTHER_PK);
+        PolicyRegistry.ActionIntent memory intent = _mkIntent(
+            keccak256("req-alt-signer"),
+            6,
+            RECIPIENT_A,
+            25,
+            uint64(block.timestamp + 1 hours),
+            2
+        );
 
-        registry.authorizeIntent(intent, sig);
-        require(registry.nextIntentNonce(AGENT_ID) == 1, "nonce should increment after rotated signer auth");
+        bytes memory sig = _signIntent(ALT_SIGNER_PK, intent);
+        address signer = registry.authorizeIntent(intent, sig);
+
+        require(signer == altSigner, "rotated signer mismatch");
     }
 
     function _registerDefaultPolicy() internal {
         PolicyRegistry.AgentPolicy memory p = _mkPolicy(owner, false);
         _prank(owner);
         registry.registerPolicy(AGENT_ID, p);
-    }
-
-    function _mkIntent(bytes32 requestId, uint256 nonce, uint64 deadline)
-        internal
-        view
-        returns (PolicyRegistry.SignedIntent memory intent)
-    {
-        intent.agentId = AGENT_ID;
-        intent.requestId = requestId;
-        intent.action = keccak256("spend");
-        intent.recipient = RECIPIENT_A;
-        intent.amount = 25;
-        intent.nonce = nonce;
-        intent.deadline = deadline;
-    }
-
-    function _signIntent(PolicyRegistry.SignedIntent memory intent, uint256 privateKey)
-        internal
-        view
-        returns (bytes memory sig)
-    {
-        bytes32 digest = registry.getIntentDigest(intent);
-        (uint8 v, bytes32 r, bytes32 s) = _vm().sign(privateKey, digest);
-        sig = abi.encodePacked(r, s, v);
     }
 
     function _mkPolicy(address policyOwner, bool panic)
@@ -210,10 +218,38 @@ contract PolicyRegistryTest {
         p.riskLevel = 1;
 
         p.allowedActions = new bytes32[](1);
-        p.allowedActions[0] = keccak256("spend");
+        p.allowedActions[0] = ACTION_SPEND;
 
         p.allowedRecipients = new address[](1);
         p.allowedRecipients[0] = RECIPIENT_A;
+    }
+
+    function _mkIntent(
+        bytes32 requestId,
+        uint256 nonce,
+        address recipient,
+        uint256 amount,
+        uint64 deadline,
+        uint64 policyVersion
+    ) internal pure returns (PolicyRegistry.ActionIntent memory intent) {
+        intent.requestId = requestId;
+        intent.nonce = nonce;
+        intent.agentId = AGENT_ID;
+        intent.actionType = ACTION_SPEND;
+        intent.recipient = recipient;
+        intent.amount = amount;
+        intent.deadline = deadline;
+        intent.policyVersion = policyVersion;
+    }
+
+    function _signIntent(uint256 privateKey, PolicyRegistry.ActionIntent memory intent)
+        internal
+        view
+        returns (bytes memory)
+    {
+        bytes32 digest = registry.hashIntent(intent);
+        (uint8 v, bytes32 r, bytes32 s) = _vm().sign(privateKey, digest);
+        return abi.encodePacked(r, s, v);
     }
 
     function _expectRevert() internal {

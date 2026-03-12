@@ -32,7 +32,7 @@ This repo is runnable locally and includes an ERC-712 authorization path on the 
 - all mutable scalar fields are overwritten
 - `allowedActions` and `allowedRecipients` are fully replaced (empty array clears values)
 - owner change is rejected in `updatePolicy`; use `rotateOwner`
-- `policyVersion` is internal-only and increments on update/panic/owner-rotation
+- `policyVersion` is internal-only and increments on update/panic/owner-rotation/signer-rotation
 
 ## ERC-712 signing flow (MVP)
 
@@ -54,9 +54,9 @@ Validation sequence:
 3. `intent.policyVersion == current policyVersion`
 4. replay guards:
    - `usedRequestIds[agentId][requestId] == false`
-   - `usedNonces[agentId][owner][nonce] == false`
+   - `usedNonces[agentId][authorizedSigner][nonce] == false`
 5. policy constraints pass (action/recipient/limits)
-6. EIP-712 signature recovers to current policy owner
+6. EIP-712 signature recovers to `authorizedSigner[agentId]` (defaults to owner)
 7. requestId + nonce are consumed and `IntentAuthorized` is emitted
 
 Threat-model impact:

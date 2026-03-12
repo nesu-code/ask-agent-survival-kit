@@ -12,7 +12,7 @@ It includes an ERC-712 signed intent authorization primitive for deterministic e
 - `updatePolicy` cannot rotate owner; use `rotateOwner`.
 - `policyVersion` is managed internally:
   - starts at `1` on register
-  - increments on update / panic toggle / owner rotation
+  - increments on update / panic toggle / owner rotation / signer rotation
 
 ### ERC-712 intent model
 
@@ -28,9 +28,9 @@ It includes an ERC-712 signed intent authorization primitive for deterministic e
   - deadline not expired
   - intent policyVersion matches current policyVersion
   - `requestId` unused
-  - nonce unused for current owner
+  - nonce unused for current authorized signer
   - action/recipient/spend limits pass
-  - recovered signer equals current policy owner
+  - recovered signer equals `authorizedSigner[agentId]` (defaults to owner)
 - Replay protection:
   - `usedRequestIds[agentId][requestId]`
   - `usedNonces[agentId][owner][nonce]`

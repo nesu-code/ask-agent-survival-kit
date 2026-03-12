@@ -9,7 +9,9 @@
     "test:contracts": "bash -lc 'if command -v forge >/dev/null 2>&1; then cd contracts && forge test -q; else echo \"forge not found: skipping Solidity tests (install Foundry to enable)\"; fi'",
     "test": "npm run test:runtime && npm run test:contracts",
     "demo": "npm run build && node demo/run-local-demo.js",
-    "check": "npm run test"
+    "check": "npm run test",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build"
   },
   "devDependencies": {
     "typescript": "^5.6.3"

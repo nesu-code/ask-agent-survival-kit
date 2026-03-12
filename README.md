@@ -36,7 +36,7 @@ This repo is runnable locally and includes an ERC-712 authorization path on the 
 
 ## ERC-712 signing flow (MVP)
 
-`authorizeIntent(ActionIntent intent, bytes signature)` verifies an owner-signed typed intent.
+`authorizeIntent(ActionIntent intent, bytes signature)` verifies an authorized-signer typed intent.
 
 Typed fields:
 - `requestId`

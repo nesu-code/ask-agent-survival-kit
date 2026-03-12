@@ -4,6 +4,27 @@ pragma solidity ^0.8.24;
 /// @title PolicyRegistry
 /// @notice ASK MVP registry for per-agent policy control + ERC-712 signed intent authorization.
 contract PolicyRegistry {
+    error NotPolicyOwner();
+    error AlreadyRegistered();
+    error InvalidOwner();
+    error SenderMustBeOwner();
+    error OwnerChangeRequiresRotateOwner();
+    error InvalidSigner();
+    error PolicyNotFound();
+    error PanicModeActive();
+    error IntentExpired();
+    error PolicyVersionMismatch();
+    error SignerNotSet();
+    error RequestReplay();
+    error NonceReplay();
+    error ActionNotAllowed();
+    error RecipientNotAllowed();
+    error TotalSpendExceeded();
+    error RateLimitExceeded();
+    error BadSignatureLength();
+    error BadSignatureV();
+    error BadSignatureS();
+
     struct AgentPolicy {
         address owner;
         uint256 spendLimitTotal;
@@ -63,7 +84,7 @@ contract PolicyRegistry {
     );
 
     modifier onlyOwner(bytes32 agentId) {
-        require(_policies[agentId].owner == msg.sender, "ASK: not policy owner");
+        if (_policies[agentId].owner != msg.sender) revert NotPolicyOwner();
         _;
     }
 
@@ -75,9 +96,9 @@ contract PolicyRegistry {
     /// @dev Register/update semantics are FULL-REPLACE (except policyVersion which is managed internally).
     ///      The caller must be the policy owner to prevent third-party grief registration.
     function registerPolicy(bytes32 agentId, AgentPolicy calldata policy) external {
-        require(_policies[agentId].owner == address(0), "ASK: already registered");
-        require(policy.owner != address(0), "ASK: invalid owner");
-        require(msg.sender == policy.owner, "ASK: sender must be owner");
+        if (_policies[agentId].owner != address(0)) revert AlreadyRegistered();
+        if (policy.owner == address(0)) revert InvalidOwner();
+        if (msg.sender != policy.owner) revert SenderMustBeOwner();
 
         AgentPolicy storage p = _policies[agentId];
         p.owner = policy.owner;
@@ -104,10 +125,10 @@ contract PolicyRegistry {
     /// @dev FULL-REPLACE semantics: all mutable fields are overwritten, and omitted arrays are cleared.
     ///      Owner rotation is intentionally not supported here; use rotateOwner().
     function updatePolicy(bytes32 agentId, AgentPolicy calldata policy) external onlyOwner(agentId) {
-        require(policy.owner != address(0), "ASK: invalid owner");
+        if (policy.owner == address(0)) revert InvalidOwner();
 
         AgentPolicy storage p = _policies[agentId];
-        require(policy.owner == p.owner, "ASK: owner change via rotateOwner");
+        if (policy.owner != p.owner) revert OwnerChangeRequiresRotateOwner();
         p.owner = policy.owner;
         p.spendLimitTotal = policy.spendLimitTotal;
         p.spentTotal = policy.spentTotal;
@@ -135,7 +156,7 @@ contract PolicyRegistry {
     }
 
     function rotateOwner(bytes32 agentId, address newOwner) external onlyOwner(agentId) {
-        require(newOwner != address(0), "ASK: invalid owner");
+        if (newOwner == address(0)) revert InvalidOwner();
         AgentPolicy storage p = _policies[agentId];
         address oldOwner = p.owner;
         p.owner = newOwner;
@@ -148,7 +169,7 @@ contract PolicyRegistry {
     }
 
     function setAuthorizedSigner(bytes32 agentId, address signer) external onlyOwner(agentId) {
-        require(signer != address(0), "ASK: invalid signer");
+        if (signer == address(0)) revert InvalidSigner();
 
         AgentPolicy storage p = _policies[agentId];
         authorizedSigner[agentId] = signer;
@@ -161,22 +182,22 @@ contract PolicyRegistry {
     /// @dev This is an MVP authorization primitive for runtime/executor integration.
     function authorizeIntent(ActionIntent calldata intent, bytes calldata signature) external returns (address signer) {
         AgentPolicy storage p = _policies[intent.agentId];
-        require(p.owner != address(0), "ASK: policy not found");
-        require(!p.panicMode, "ASK: panic mode active");
-        require(block.timestamp <= intent.deadline, "ASK: intent expired");
-        require(intent.policyVersion == p.policyVersion, "ASK: policy version mismatch");
+        if (p.owner == address(0)) revert PolicyNotFound();
+        if (p.panicMode) revert PanicModeActive();
+        if (block.timestamp > intent.deadline) revert IntentExpired();
+        if (intent.policyVersion != p.policyVersion) revert PolicyVersionMismatch();
         address allowedSigner = authorizedSigner[intent.agentId];
-        require(allowedSigner != address(0), "ASK: signer not set");
-        require(!usedRequestIds[intent.agentId][intent.requestId], "ASK: request replay");
-        require(!usedNonces[intent.agentId][allowedSigner][intent.nonce], "ASK: nonce replay");
+        if (allowedSigner == address(0)) revert SignerNotSet();
+        if (usedRequestIds[intent.agentId][intent.requestId]) revert RequestReplay();
+        if (usedNonces[intent.agentId][allowedSigner][intent.nonce]) revert NonceReplay();
 
-        require(_isActionAllowed(p, intent.actionType), "ASK: action not allowed");
-        require(_isRecipientAllowed(p, intent.recipient), "ASK: recipient not allowed");
+        if (!_isActionAllowed(p, intent.actionType)) revert ActionNotAllowed();
+        if (!_isRecipientAllowed(p, intent.recipient)) revert RecipientNotAllowed();
         _enforceSpend(p, intent.amount);
 
         bytes32 digest = hashIntent(intent);
         signer = _recoverSigner(digest, signature);
-        require(signer == allowedSigner, "ASK: invalid signer");
+        if (signer != allowedSigner) revert InvalidSigner();
 
         usedRequestIds[intent.agentId][intent.requestId] = true;
         usedNonces[intent.agentId][allowedSigner][intent.nonce] = true;
@@ -234,7 +255,7 @@ contract PolicyRegistry {
 
     function _enforceSpend(AgentPolicy storage p, uint256 amount) internal {
         uint256 projectedTotal = p.spentTotal + amount;
-        require(projectedTotal <= p.spendLimitTotal, "ASK: total spend exceeded");
+        if (projectedTotal > p.spendLimitTotal) revert TotalSpendExceeded();
 
         uint256 effectiveWindowSpent = p.windowSpent;
         if (p.windowStart == 0 || block.timestamp >= p.windowStart + p.windowSizeSec) {
@@ -242,7 +263,7 @@ contract PolicyRegistry {
         }
 
         uint256 projectedWindow = effectiveWindowSpent + amount;
-        require(projectedWindow <= p.rateLimitPerWindow, "ASK: rate limit exceeded");
+        if (projectedWindow > p.rateLimitPerWindow) revert RateLimitExceeded();
     }
 
     function _replaceAllowedActions(bytes32 agentId, bytes32[] calldata values) internal {
@@ -260,7 +281,7 @@ contract PolicyRegistry {
     }
 
     function _recoverSigner(bytes32 digest, bytes calldata signature) internal pure returns (address) {
-        require(signature.length == 65, "ASK: bad signature length");
+        if (signature.length != 65) revert BadSignatureLength();
 
         bytes32 r;
         bytes32 s;
@@ -271,15 +292,12 @@ contract PolicyRegistry {
             v := byte(0, calldataload(add(signature.offset, 64)))
         }
 
-        require(v == 27 || v == 28, "ASK: bad signature v");
+        if (!(v == 27 || v == 28)) revert BadSignatureV();
         // secp256k1n/2 to reject malleable signatures.
-        require(
-            uint256(s) <= 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0,
-            "ASK: bad signature s"
-        );
+        if (uint256(s) > 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0) revert BadSignatureS();
 
         address recovered = ecrecover(digest, v, r, s);
-        require(recovered != address(0), "ASK: invalid signer");
+        if (recovered == address(0)) revert InvalidSigner();
         return recovered;
     }
 }

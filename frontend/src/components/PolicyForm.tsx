@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { RuntimePolicy } from '../types/domain';
 
 interface PolicyFormProps {
@@ -10,18 +10,33 @@ export function PolicyForm({ policy, onSave }: PolicyFormProps) {
   const [draft, setDraft] = useState(policy);
   const [saving, setSaving] = useState(false);
 
-  const expiresAtInput = useMemo(() => new Date(draft.expiresAt * 1000).toISOString().slice(0, 16), [draft.expiresAt]);
+  useEffect(() => {
+    setDraft(policy);
+  }, [policy]);
+
+  const expiresAtInput = useMemo(
+    () => new Date(draft.expiresAt * 1000).toISOString().slice(0, 16),
+    [draft.expiresAt],
+  );
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
-    await onSave(draft);
-    setSaving(false);
+    try {
+      await onSave(draft);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <form className="card" onSubmit={submit}>
-      <h2>Policy Create / Update</h2>
+      <div className="card-head">
+        <h3>Policy Create / Update</h3>
+        <span className="badge neutral">Editable</span>
+      </div>
+      <p className="subtle">Set deterministic limits for actions, recipients, and spend controls.</p>
+
       <div className="grid two">
         <label>
           Agent ID
@@ -63,11 +78,16 @@ export function PolicyForm({ policy, onSave }: PolicyFormProps) {
         </label>
       </div>
 
-      <button disabled={saving} type="submit">{saving ? 'Saving...' : 'Save Policy'}</button>
+      <div className="actions-row">
+        <button disabled={saving} type="submit">{saving ? 'Saving Policy...' : 'Save Policy'}</button>
+      </div>
     </form>
   );
 }
 
 function splitCsv(value: string): string[] {
-  return value.split(',').map((item) => item.trim()).filter(Boolean);
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
 }

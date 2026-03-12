@@ -12,13 +12,20 @@ const client = createAskClient();
 export default function App() {
   const [policy, setPolicy] = useState<RuntimePolicy | null>(null);
   const [logs, setLogs] = useState<DecisionRecord[]>([]);
+  const [booting, setBooting] = useState(true);
 
   useEffect(() => {
     const boot = async () => {
-      const initialPolicy = await client.getPolicy();
-      const initialLogs = await client.listDecisionLogs(50);
-      setPolicy(initialPolicy);
-      setLogs(initialLogs);
+      try {
+        const [initialPolicy, initialLogs] = await Promise.all([
+          client.getPolicy(),
+          client.listDecisionLogs(50),
+        ]);
+        setPolicy(initialPolicy);
+        setLogs(initialLogs);
+      } finally {
+        setBooting(false);
+      }
     };
 
     void boot();
@@ -30,8 +37,16 @@ export default function App() {
     return { allow, blocked, total: logs.length };
   }, [logs]);
 
-  if (!policy) {
-    return <div className="app"><p>Loading ASK frontend...</p></div>;
+  if (booting || !policy) {
+    return (
+      <main className="app">
+        <section className="hero card loading-state">
+          <div className="loading-dot" />
+          <h1>Initializing ASK dashboard</h1>
+          <p>Loading policy, controls, and decision telemetry...</p>
+        </section>
+      </main>
+    );
   }
 
   const refreshLogs = async () => setLogs(await client.listDecisionLogs(100));
@@ -62,27 +77,56 @@ export default function App() {
 
   return (
     <main className="app">
-      <header>
-        <h1>Agent Survival Kit — Frontend Demo</h1>
-        <p>Live policy editing, panic switch, deterministic simulation, and audit-friendly reason codes.</p>
+      <header className="hero card">
+        <div>
+          <p className="eyebrow">Agent Survival Kit</p>
+          <h1>Runtime Safety Command Center</h1>
+          <p className="hero-copy">
+            Live policy governance, panic controls, deterministic simulations, and audit-ready reason codes.
+          </p>
+        </div>
+        <span className={`badge ${policy.panicMode ? 'danger' : 'success'}`}>
+          {policy.panicMode ? 'Panic Mode Active' : 'Healthy'}
+        </span>
       </header>
 
-      <section className="stats">
-        <div><strong>{policy.policyVersion}</strong><span>Policy Version</span></div>
-        <div><strong>{stats.allow}</strong><span>Allowed</span></div>
-        <div><strong>{stats.blocked}</strong><span>Blocked</span></div>
-        <div><strong>{policy.panicMode ? 'ON' : 'OFF'}</strong><span>Panic Mode</span></div>
+      <section className="stats" aria-label="Overview">
+        <article className="stat-card card accent-blue">
+          <span>Policy Version</span>
+          <strong>v{policy.policyVersion}</strong>
+        </article>
+        <article className="stat-card card accent-green">
+          <span>Allowed Decisions</span>
+          <strong>{stats.allow}</strong>
+        </article>
+        <article className="stat-card card accent-red">
+          <span>Blocked Decisions</span>
+          <strong>{stats.blocked}</strong>
+        </article>
+        <article className="stat-card card accent-purple">
+          <span>Total Evaluations</span>
+          <strong>{stats.total}</strong>
+        </article>
       </section>
 
       <div className="layout">
-        <div className="left-col">
+        <section className="left-col" aria-label="Controls">
+          <div className="section-title">
+            <h2>Controls</h2>
+            <p>Manage policy boundaries and emergency response settings.</p>
+          </div>
           <PolicyForm policy={policy} onSave={handleSavePolicy} />
           <PanicToggle active={policy.panicMode} onToggle={handlePanicToggle} />
-        </div>
-        <div className="right-col">
+        </section>
+
+        <section className="right-col" aria-label="Simulation and logs">
+          <div className="section-title">
+            <h2>Simulation & Logs</h2>
+            <p>Test decisions under policy constraints and review generated audit events.</p>
+          </div>
           <SimulationPanel onSimulate={handleSimulate} onScenario={handleScenario} />
           <DecisionLogTable records={logs} />
-        </div>
+        </section>
       </div>
     </main>
   );

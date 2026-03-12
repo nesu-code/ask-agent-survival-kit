@@ -7,7 +7,11 @@ interface DecisionLogTableProps {
 export function DecisionLogTable({ records }: DecisionLogTableProps) {
   return (
     <section className="card">
-      <h2>Decision Log</h2>
+      <div className="card-head">
+        <h3>Decision Log</h3>
+        <span className="badge neutral">{records.length} Records</span>
+      </div>
+
       <div className="table-wrap">
         <table>
           <thead>
@@ -24,7 +28,12 @@ export function DecisionLogTable({ records }: DecisionLogTableProps) {
           <tbody>
             {records.length === 0 ? (
               <tr>
-                <td colSpan={7}>No decisions yet.</td>
+                <td colSpan={7}>
+                  <div className="empty-state">
+                    <strong>No decisions yet</strong>
+                    <span>Run a simulation to generate the first decision record.</span>
+                  </div>
+                </td>
               </tr>
             ) : (
               records.map((record) => (
@@ -33,9 +42,13 @@ export function DecisionLogTable({ records }: DecisionLogTableProps) {
                   <td>{record.requestId}</td>
                   <td>{record.actionType}{record.amount ? ` (${record.amount})` : ''}</td>
                   <td>{record.recipient ?? '-'}</td>
-                  <td>{record.decision}</td>
+                  <td>
+                    <span className={`badge ${record.decision === 'ALLOW' ? 'success' : 'danger'}`}>
+                      {record.decision === 'ALLOW' ? 'ALLOW' : 'BLOCK'}
+                    </span>
+                  </td>
                   <td><code>{record.reasonCode}</code></td>
-                  <td>{record.policyVersion ?? '-'}</td>
+                  <td>v{record.policyVersion ?? '-'}</td>
                 </tr>
               ))
             )}

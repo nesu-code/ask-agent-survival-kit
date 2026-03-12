@@ -18,6 +18,9 @@ This document defines baseline controls for the ASK MVP scaffold.
 - High-risk requests fail closed if policy is unavailable.
 - Deterministic evaluation order prevents ambiguous outcomes.
 - Every critical request emits a structured `DecisionRecord`.
+- On-chain critical intent authorization requires valid ERC-712 owner signature.
+- Signed intent replay is blocked by requestId and nonce consumption.
+- Signed intent freshness is enforced by `deadline` and `policyVersion` binding.
 
 ## Threats and Mitigations (MVP)
 

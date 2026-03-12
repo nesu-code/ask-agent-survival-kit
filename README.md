@@ -2,7 +2,7 @@
 
 ASK is a safety layer for autonomous agents: **human-owned policy on-chain**, deterministic **runtime enforcement**, and auditable **decision logs**.
 
-This repo is now runnable locally as an MVP.
+This repo is runnable locally and includes an ERC-712 authorization path on the Solidity side.
 
 ## What ships in this MVP
 
@@ -10,6 +10,7 @@ This repo is now runnable locally as an MVP.
   - owner-only policy mutation paths
   - panic mode kill switch
   - explicit policy versioning
+  - ERC-712 typed intent authorization (`authorizeIntent`)
 - **Runtime enforcer** (`runtime/src/enforcer.ts`)
   - deterministic allow/block decisions with reason codes
 - **Decision logger** (`api/src/logger.ts`)
@@ -25,7 +26,7 @@ This repo is now runnable locally as an MVP.
 - Deployment tracking template: [`docs/DEPLOYMENTS.md`](./docs/DEPLOYMENTS.md)
 - Demo steps: [`demo/DEMO_SCRIPT.md`](./demo/DEMO_SCRIPT.md)
 
-## Contract update semantics (important)
+## Contract update semantics
 
 `PolicyRegistry.updatePolicy` is **full-replace**:
 - all mutable scalar fields are overwritten
@@ -33,53 +34,77 @@ This repo is now runnable locally as an MVP.
 - owner change is rejected in `updatePolicy`; use `rotateOwner`
 - `policyVersion` is internal-only and increments on update/panic/owner-rotation
 
-## Quick start
+## ERC-712 signing flow (MVP)
+
+`authorizeIntent(ActionIntent intent, bytes signature)` verifies an owner-signed typed intent.
+
+Typed fields:
+- `requestId`
+- `nonce`
+- `agentId`
+- `actionType`
+- `recipient`
+- `amount`
+- `deadline`
+- `policyVersion`
+
+Validation sequence:
+1. policy exists and panic mode is off
+2. `deadline` not expired
+3. `intent.policyVersion == current policyVersion`
+4. replay guards:
+   - `usedRequestIds[agentId][requestId] == false`
+   - `usedNonces[agentId][owner][nonce] == false`
+5. policy constraints pass (action/recipient/limits)
+6. EIP-712 signature recovers to current policy owner
+7. requestId + nonce are consumed and `IntentAuthorized` is emitted
+
+Threat-model impact:
+- mitigates unauthorized execution (must be owner-signed)
+- mitigates replay attacks (requestId + nonce guards)
+- mitigates stale-signature use (deadline + policyVersion binding)
+
+## Run commands
 
 ```bash
 cd /root/.openclaw/workspace/agent-survival-kit
 npm install
 npm run build
-```
-
-## Run tests
-
-```bash
 npm test
-```
-
-- Runtime tests always run.
-- Solidity tests run when Foundry (`forge`) is installed; otherwise they are skipped with a clear message.
-
-## Run the local MVP demo
-
-```bash
 npm run demo
 ```
 
-Demo output shows:
-1. policy create (v1)
-2. allowed request (`ALLOW_WITHIN_POLICY`)
-3. policy update (v2, full-replace allowlist)
-4. blocked request (`BLOCK_RECIPIENT_NOT_ALLOWED`)
-5. panic mode enabled (v3)
-6. blocked request (`BLOCK_PANIC_MODE_ACTIVE`)
-7. final decision log records
+Notes:
+- Runtime tests always run.
+- Solidity tests run when Foundry (`forge`) is installed; otherwise skipped with a clear message.
 
-## Solidity tests (Foundry)
+## Frontend demo app (Vite + React + TypeScript)
 
-Files:
-- `contracts/test/PolicyRegistry.t.sol`
+A demo-ready UI lives in `frontend/` with:
+- policy create/update form
+- panic mode toggle
+- action simulation panel (allowed vs blocked outcomes)
+- decision log table with reason codes
+- local/mock adapter designed for future live API integration
 
-Coverage includes:
-- owner-only behavior
-- register/update semantics
-- version increments
-- panic mode behavior
-
-Run directly:
+Install frontend dependencies once:
 
 ```bash
-cd contracts
+cd /root/.openclaw/workspace/agent-survival-kit/frontend
+npm install
+```
+
+From repo root:
+
+```bash
+npm run frontend:dev
+npm run frontend:build
+```
+
+Direct Solidity tests:
+
+```bash
+cd /root/.openclaw/workspace/agent-survival-kit/contracts
 forge test -vv
 ```
 

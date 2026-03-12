@@ -1,0 +1,16 @@
+{
+  "name": "ask-mvp-skeleton",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ASK MVP scaffold: contracts + runtime enforcer + decision logger",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "echo 'TODO: add eslint configuration'",
+    "test": "echo 'TODO: add tests for contracts/runtime/api'",
+    "check": "npm run lint && npm run test",
+    "demo": "echo 'See demo/DEMO_SCRIPT.md for exact CLI flow'"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

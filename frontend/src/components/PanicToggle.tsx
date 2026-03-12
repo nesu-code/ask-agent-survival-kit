@@ -18,14 +18,18 @@ export function PanicToggle({ active, onToggle }: PanicToggleProps) {
   };
 
   return (
-    <section className="card panic">
-      <div className="card-head">
-        <h3>Panic Mode</h3>
-        <span className={`badge ${active ? 'danger' : 'success'}`}>{active ? 'Active' : 'Inactive'}</span>
+    <section className="panel module panic-module">
+      <div className="module-head">
+        <h3>Emergency Brake</h3>
+        <span className={`badge ${active ? 'danger' : 'success'}`}>{active ? 'Engaged' : 'Standby'}</span>
       </div>
-      <p>{active ? 'All high-risk actions are currently blocked.' : 'Normal enforcement mode is active.'}</p>
+      <p className="hint">
+        {active
+          ? 'Panic mode is ON: high-risk actions are blocked until disabled.'
+          : 'Panic mode is OFF: normal policy checks apply.'}
+      </p>
       <button className={active ? 'danger' : ''} onClick={toggle} disabled={busy}>
-        {busy ? 'Updating...' : active ? 'Disable Panic Mode' : 'Enable Panic Mode'}
+        {busy ? 'Switching...' : active ? 'Disable panic mode' : 'Enable panic mode'}
       </button>
     </section>
   );

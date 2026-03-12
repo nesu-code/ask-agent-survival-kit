@@ -9,6 +9,7 @@ interface PolicyFormProps {
 export function PolicyForm({ policy, onSave }: PolicyFormProps) {
   const [draft, setDraft] = useState(policy);
   const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
 
   useEffect(() => {
     setDraft(policy);
@@ -24,26 +25,27 @@ export function PolicyForm({ policy, onSave }: PolicyFormProps) {
     setSaving(true);
     try {
       await onSave(draft);
+      setSavedAt(new Date().toLocaleTimeString());
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <form className="card" onSubmit={submit}>
-      <div className="card-head">
-        <h3>Policy Create / Update</h3>
-        <span className="badge neutral">Editable</span>
+    <form className="panel module" onSubmit={submit}>
+      <div className="module-head">
+        <h3>Policy Composer</h3>
+        <span className="badge neutral">Live editable</span>
       </div>
-      <p className="subtle">Set deterministic limits for actions, recipients, and spend controls.</p>
+      <p className="hint">Use comma-separated lists for actions/recipients. Changes apply immediately when saved.</p>
 
-      <div className="grid two">
+      <div className="form-grid">
         <label>
           Agent ID
           <input value={draft.agentId} onChange={(e) => setDraft({ ...draft, agentId: e.target.value })} required />
         </label>
         <label>
-          Expires At
+          Expiry (UTC)
           <input
             type="datetime-local"
             value={expiresAtInput}
@@ -51,26 +53,23 @@ export function PolicyForm({ policy, onSave }: PolicyFormProps) {
           />
         </label>
         <label>
-          Spend Total Limit
+          Spend limit total
           <input type="number" value={draft.spendLimitTotal} onChange={(e) => setDraft({ ...draft, spendLimitTotal: Number(e.target.value) })} />
         </label>
         <label>
-          Rate Limit / Window
+          Rate limit / window
           <input type="number" value={draft.rateLimitPerWindow} onChange={(e) => setDraft({ ...draft, rateLimitPerWindow: Number(e.target.value) })} />
         </label>
         <label>
-          Window Seconds
+          Window size (seconds)
           <input type="number" value={draft.windowSizeSec} onChange={(e) => setDraft({ ...draft, windowSizeSec: Number(e.target.value) })} />
         </label>
         <label>
-          Allowed Actions (comma)
-          <input
-            value={draft.allowedActions.join(', ')}
-            onChange={(e) => setDraft({ ...draft, allowedActions: splitCsv(e.target.value) })}
-          />
+          Allowed actions
+          <input value={draft.allowedActions.join(', ')} onChange={(e) => setDraft({ ...draft, allowedActions: splitCsv(e.target.value) })} />
         </label>
-        <label className="span-2">
-          Allowed Recipients (comma)
+        <label className="wide">
+          Allowed recipients
           <input
             value={draft.allowedRecipients.join(', ')}
             onChange={(e) => setDraft({ ...draft, allowedRecipients: splitCsv(e.target.value) })}
@@ -78,8 +77,9 @@ export function PolicyForm({ policy, onSave }: PolicyFormProps) {
         </label>
       </div>
 
-      <div className="actions-row">
-        <button disabled={saving} type="submit">{saving ? 'Saving Policy...' : 'Save Policy'}</button>
+      <div className="action-line">
+        <button disabled={saving} type="submit">{saving ? 'Saving policy...' : 'Save policy to runtime'}</button>
+        {savedAt && <span className="micro-feedback">Last saved at {savedAt}</span>}
       </div>
     </form>
   );

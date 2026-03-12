@@ -1,31 +1,44 @@
-# ASK Frontend (Premium Dashboard Refresh)
+# ASK Frontend (Neon Mission Deck Redesign)
 
-This frontend keeps ASK demo functionality intact while upgrading the UI to a premium, modern dashboard aesthetic:
+This frontend keeps all ASK core behavior intact while introducing a full architecture + visual redesign.
 
-- Policy create/update controls
-- Panic mode toggle with semantic status badge
-- Action simulation with one-click scenarios
-- Decision log table with empty state and decision badges
+## What stayed functional
 
-## Visual/UX upgrades
+- Policy create/update
+- Panic mode toggle
+- Action simulation + scenario loading
+- Decision logs with reason codes and policy version
 
-- Strong section hierarchy: **Overview**, **Controls**, **Simulation & Logs**
-- Glassmorphism cards, gradient accents, soft shadows
-- Improved spacing/typography and consistent component styling
-- Better loading and empty states
-- Responsive behavior for laptop + mobile widths
+## Changelog (full redesign highlights)
+
+- Rebuilt page architecture into a **hero + segmented workspace** model
+  - New hero zone with interactive orbit animation toggle
+  - Distinct navigation dock with 3 focused views:
+    - **Mission Control** (policy + panic)
+    - **Simulator Bay** (scenario + action simulation)
+    - **Audit Stream** (decision logs)
+- Completely reworked component composition and spacing
+  - New panel/module system, context headers, and responsive layout behavior
+- New FUN/COOL/MODERN visual system
+  - Bold multi-layer gradients + neon accents
+  - Animated hero rings, hover transitions, and smooth micro-interactions
+  - Clear status chips/badges and stronger visual hierarchy
+- UX clarity improvements
+  - Better labels/help text and task framing
+  - Empty-state guidance in logs and simulation
+  - Success/error notices for runtime operations
+  - Mobile + laptop responsive refinements
+- Lightweight implementation
+  - CSS-first redesign (no heavy UI dependency additions)
 
 ## Run locally
 
 ```bash
-cd /root/.openclaw/workspace/agent-survival-kit/frontend
-npm install
-npm run dev
+cd /root/.openclaw/workspace/agent-survival-kit/frontend && npm install && npm run dev
 ```
 
-Or from repo root:
+## Build verification
 
 ```bash
-cd /root/.openclaw/workspace/agent-survival-kit
-npm run frontend:dev
+npm run build
 ```
